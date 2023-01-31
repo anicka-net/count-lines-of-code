@@ -14,16 +14,16 @@ import argparse
 from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
 
-debug = 0
-lang = 0
+debug = False
+lang = False
 flag = 0
-sources = {} 
+sources = {}
 wdir = "."
 
 if not debug:
-    logging.disable(logging.CRITICAL); #FIXME mute unicode warnings for the time being
+    logging.disable(logging.CRITICAL)   # FIXME mute unicode warnings for the time being
 
-FD   = 0
+FD = 0
 NAME = 1
 
 patches_pat = ['*.patch', '*.diff', '*.dif']
@@ -32,42 +32,36 @@ package_list = {}
 global_lines = 0
 global_adds = 0
 
+
 def process_patch(filename):
     """Counts additions and deletions in one patch"""
 
-    diff = (0,0)
+    diff = (0, 0)
     try:
         fh = open(filename)
         patch = PatchSet(fh)
-    except (LookupError, OSError, UnicodeError, UnidiffParseError, UnboundLocalError) as error: 
-        if debug: print(error)
+    except (LookupError, OSError, UnicodeError, UnidiffParseError, UnboundLocalError) as error:
+        if debug:
+            print(error)
         return diff
     for f in patch:
-        diff = tuple(map(operator.add,diff,(f.added, f.removed)))
-    fh.close() 
-    return diff 
+        diff = tuple(map(operator.add, diff, (f.added, f.removed)))
+    fh.close()
+    return diff
 
-def should_skip(filename):
-    """Returns tru for files that hang up pygount"""
-
-    exc_pat = ["*lol*xml", "*test-hgweb-commands.t", "*doc/api/report.md", "*tex/latex/iwhdp/iwhdp.cls"]
-    for pat in exc_pat:
-        if fnmatch.fnmatch(filename, pat):
-            return True;
-    return False;
 
 def process_one_code_dir(filename):
     files = []
     patches = []
     tarballs = []
-    diff = (0,0)
-    counts = (0,0,0)
+    diff = (0, 0)
+    counts = (0, 0, 0)
 
     files = os.listdir(filename)
 
     for pattern in patches_pat:
         patches.extend(fnmatch.filter(files, pattern))
-    
+
     for pattern in tarballs_pat:
         tarballs.extend(fnmatch.filter(files, pattern))
 
@@ -128,14 +122,14 @@ def process_one_rpm(filename):
     files = []
     patches = []
     tarballs = []
-    diff = (0,0)
+    diff = (0, 0)
     count = 0
     docs = 0
     empty = 0
 
     try:
         current_dir = os.getcwd()
-    except (FileNotFoundError) as error:
+    except FileNotFoundError as error:
         print(filename, error)
         return (count, docs, empty) + diff
 
@@ -146,13 +140,13 @@ def process_one_rpm(filename):
 
             for member in rpm.getmembers():
                 files.append(member.name)
-        
+
             for pattern in patches_pat:
                 patches.extend(fnmatch.filter(files, pattern))
-        
+
             for pattern in tarballs_pat:
                 tarballs.extend(fnmatch.filter(files, pattern))
-    
+
             for patch in patches:
                 if debug: print(patch)
                 fd = rpm.extractfile(patch)
@@ -161,7 +155,7 @@ def process_one_rpm(filename):
                 os.close(temp[FD])
                 diff = tuple(map(operator.add, diff, process_patch(temp[NAME])))
                 os.remove(temp[NAME])
-    
+
             for tarball in tarballs:
                 if debug: print(tarball)
                 fd = rpm.extractfile(tarball)
@@ -171,10 +165,11 @@ def process_one_rpm(filename):
                 (count, docs, empty) = tuple(map(operator.add, (count, docs, empty), process_tarfile(temp[NAME])))
                 os.remove(temp[NAME])
                 os.chdir(current_dir)
-    except (AssertionError) as error:
-            if debug: print(error)
-    
+    except AssertionError as error:
+        if debug: print(error)
+
     return (count, docs, empty) + diff
+
 
 def process_one_file(filename):
     os.chdir(wdir)
@@ -182,15 +177,11 @@ def process_one_file(filename):
         return process_one_rpm(wdir+"/"+filename)
     elif os.path.isdir(filename):
         return process_one_code_dir(wdir+"/"+filename)
-    else:
-        return (0,0,0,0)
+    return (0, 0, 0, 0)
 
-###
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-D', '--debug', help='Enable debug output', action='store_true')
-parser.add_argument('-g', '--flag', help='Process only packages with given flag')
-parser.add_argument('-p', '--print-flags', help='Print package flags', action='store_true')
 parser.add_argument('-l', '--lang', help='Enable detailed language usage output', action='store_true')
 parser.add_argument('-d', '--dir', help='Directory with packages')
 parser.add_argument('-f', '--file', help='Package file')
@@ -204,25 +195,17 @@ if args.dir:
     else:
         wdir = os.getcwd()+"/"+args.dir
 else:
-    wdir = os.getcwd() 
+    wdir = os.getcwd()
 
-one_file = 0
 if args.file:
-    one_file = 1
     filename = args.file
 
 if args.lang:
-    lang = 1
-
-if args.flag:
-    flag = args.flag
-
-if args.print_flags:
-    print_flags = 1
+    lang = True
 
 savedir = os.getcwd()
-os.chdir(wdir)    
-if one_file:
+os.chdir(wdir)
+if args.file:
     package_list[filename] = process_one_file(filename)
     global_lines = package_list[filename][0] + package_list[filename][1] + package_list[filename][2]
     global_adds = package_list[filename][3]
@@ -231,16 +214,16 @@ else:
         package_list[filename] = process_one_file(filename)
         cl = package_list[filename][0] + package_list[filename][1] + package_list[filename][2]
         dl = package_list[filename][3]
-        if (cl == 0) and (dl ==0):
+        if cl == 0 and dl == 0:
             continue
-        print("{}: {} {}".format(filename, cl, dl))
+        print(f"{filename}: {cl} {dl}")
         global_lines += cl
         global_adds += dl
         sys.stdout.flush()
 os.chdir(savedir)
 
-print("Total lines of code, total lines of patches: {} {}".format(global_lines, global_adds))
-if (lang):
+print(f"Total lines of code, total lines of patches: {global_lines} {global_adds}")
+if lang:
     print("Total language analysis:")
-    for keys,values in sources.items():
-        print("\t", keys,":", values)
+    for keys, values in sources.items():
+        print("\t", keys, ":", values)
