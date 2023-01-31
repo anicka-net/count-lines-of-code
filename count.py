@@ -1,16 +1,14 @@
 #!/usr/bin/python3
 
 import rpmfile
+import io
+import json
 import os
 import fnmatch
-import tarfile
 import tempfile
-import re
-import shutil
-import pygount
 import operator
+import sh
 import sys
-import stat
 import logging
 import argparse
 from unidiff import PatchSet
@@ -83,75 +81,46 @@ def process_one_code_dir(filename):
 
     return counts + diff
 
+
 def process_tarfile(filename):
-    count = 0
-    docs = 0
-    empty = 0
+    count, docs, empty = (0, 0, 0)
+    diff = 0
     local_sources = {}
 
-    try:
-        tf = tarfile.open(filename)
-    except (tarfile.ReadError) as error:
-        if debug: print(error)
-        return (0,0,0)
-    with tempfile.TemporaryDirectory() as tmpdir: 
-        os.chdir(tmpdir) 
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.chdir(tmpdir)
+        sh.bsdtar('-x', '-C', tmpdir, '--no-same-permissions', '-o', '--no-xattrs', '-n', '-f', filename)
 
-        try:
-            members = list(filter(lambda x : not x.issym(), tf.getmembers()))
-        except (OSError, EOFError) as error:
-            if debug: print(error)
-            return (0,0,0)
+        if 'patches' in filename:
+            return tuple(map(operator.add, diff, process_patch(filename)))
+        else:
+            tokei_out = io.StringIO()
+            sh.tokei('-C', '-o', 'json', tmpdir, _out=tokei_out)
+            analysis = json.loads(tokei_out.getvalue())
+            totals = analysis['Total']
 
-        tf.extractall(path='.', members=members)
+            count += totals['code']
+            docs += totals['comments']
+            empty += totals['blanks']
 
-        archive = list(map(lambda x: x.name, members))
-        archive.sort()
-        last = ""
-        for arch in archive:
-            if debug: print("\t", arch)
+        if lang and totals:
+            for language in analysis:
+                if language == 'Total':
+                    continue
+                # update global stats
+                # NOTE(dmllr) should this count comments and blanks?
+                sources.setdefault(language, 0)
+                sources[language] += analysis[language]['code']
 
-            if arch == last:
-                continue
-            last = arch;
-            try:
-                os.chmod(arch, 0o777)
-            except (PermissionError) as error:
-                if debug: print(error)
+                # update package stats
+                # NOTE(dmllr) should this count comments and blanks?
+                local_sources.setdefault(language, 0)
+                local_sources[language] += analysis[language]['code']
+    if lang:
+        for keys, values in local_sources.items():
+            print(f"\t{keys}: {values}")
+    return (count, docs, empty)
 
-            if not os.path.isfile(arch):
-                continue
-            #skip things that hang up pygount
-            if should_skip(arch):
-                continue
-
-            try:
-                analysis = pygount.SourceAnalysis.from_file(arch, 'pygount')
-                if re.match('patches', filename) and analysis.language == 'Diff':
-                    diff = tuple(map(operator.add, diff, process_patch(arch)))
-                else:
-                    count += analysis.code
-                    docs += analysis.documentation
-                    empty += analysis.empty
-
-                if lang and analysis.code:
-
-                    #update global stats
-                    old_code = sources.get(analysis.language, 0)
-                    sources[analysis.language] = old_code + analysis.code;
-
-                    #update package stats
-                    old_code = local_sources.get(analysis.language, 0)
-                    local_sources[analysis.language] = old_code + analysis.code;
-
-                    if debug:
-                        print("\t\t", analysis.language)
-            except (TypeError) as error:
-                if debug: print(error)
-        if (lang):
-            for keys,values in local_sources.items():
-                print("\t", keys,":", values)
-        return (count, docs, empty)
 
 def process_one_rpm(filename):
     """Returns number of code, docs and empty lines, patch additions and deletions in one source rpm"""
