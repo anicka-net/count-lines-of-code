@@ -182,8 +182,6 @@ def process_one_file(filename):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-D', '--debug', help='Enable debug output', action='store_true')
-parser.add_argument('-g', '--flag', help='Process only packages with given flag')
-parser.add_argument('-p', '--print-flags', help='Print package flags', action='store_true')
 parser.add_argument('-l', '--lang', help='Enable detailed language usage output', action='store_true')
 parser.add_argument('-d', '--dir', help='Directory with packages')
 parser.add_argument('-f', '--file', help='Package file')
@@ -199,23 +197,15 @@ if args.dir:
 else:
     wdir = os.getcwd()
 
-one_file = 0
 if args.file:
-    one_file = 1
     filename = args.file
 
 if args.lang:
-    lang = 1
-
-if args.flag:
-    flag = args.flag
-
-if args.print_flags:
-    print_flags = 1
+    lang = True
 
 savedir = os.getcwd()
 os.chdir(wdir)
-if one_file:
+if args.file:
     package_list[filename] = process_one_file(filename)
     global_lines = package_list[filename][0] + package_list[filename][1] + package_list[filename][2]
     global_adds = package_list[filename][3]
