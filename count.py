@@ -14,8 +14,8 @@ import argparse
 from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
 
-debug = 0
-lang = 0
+debug = False
+lang = False
 flag = 0
 sources = {}
 wdir = "."
@@ -129,7 +129,7 @@ def process_one_rpm(filename):
 
     try:
         current_dir = os.getcwd()
-    except (FileNotFoundError) as error:
+    except FileNotFoundError as error:
         print(filename, error)
         return (count, docs, empty) + diff
 
@@ -165,7 +165,7 @@ def process_one_rpm(filename):
                 (count, docs, empty) = tuple(map(operator.add, (count, docs, empty), process_tarfile(temp[NAME])))
                 os.remove(temp[NAME])
                 os.chdir(current_dir)
-    except (AssertionError) as error:
+    except AssertionError as error:
         if debug: print(error)
 
     return (count, docs, empty) + diff
@@ -177,8 +177,7 @@ def process_one_file(filename):
         return process_one_rpm(wdir+"/"+filename)
     elif os.path.isdir(filename):
         return process_one_code_dir(wdir+"/"+filename)
-    else:
-        return (0, 0, 0, 0)
+    return (0, 0, 0, 0)
 
 
 parser = argparse.ArgumentParser()
@@ -233,8 +232,8 @@ else:
         sys.stdout.flush()
 os.chdir(savedir)
 
-print("Total lines of code, total lines of patches: {} {}".format(global_lines, global_adds))
-if (lang):
+print(f"Total lines of code, total lines of patches: {global_lines} {global_adds}")
+if lang:
     print("Total language analysis:")
     for keys, values in sources.items():
         print("\t", keys, ":", values)
