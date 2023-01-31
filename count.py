@@ -50,16 +50,6 @@ def process_patch(filename):
     return diff
 
 
-def should_skip(filename):
-    """Returns true for files that hang up pygount"""
-
-    exc_pat = ["*lol*xml", "*test-hgweb-commands.t", "*doc/api/report.md", "*tex/latex/iwhdp/iwhdp.cls"]
-    for pat in exc_pat:
-        if fnmatch.fnmatch(filename, pat):
-            return True
-    return False
-
-
 def process_one_code_dir(filename):
     files = []
     patches = []
