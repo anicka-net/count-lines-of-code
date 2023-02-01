@@ -67,26 +67,36 @@ def process_one_code_dir(filename):
 
     for patch in patches:
         if debug: print(patch)
-        diff = tuple(map(operator.add, diff, process_patch(filename+"/"+patch)))
+        diff = tuple(map(operator.add, diff, process_patch(os.path.join(filename, patch))))
 
+
+    counts = counts + diff
     for tarball in tarballs:
         if debug: print(tarball)
-        counts = tuple(map(operator.add, counts, process_tarfile(filename+"/"+tarball)))
+        counts = tuple(map(operator.add, counts, process_tarfile(os.path.join(filename, tarball))))
 
-    return counts + diff
+    return counts
 
 
 def process_tarfile(filename):
     count, docs, empty = (0, 0, 0)
-    diff = 0
+    diff = (0, 0)
     local_sources = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
         os.chdir(tmpdir)
         sh.bsdtar('-x', '-C', tmpdir, '--no-same-permissions', '-o', '--no-xattrs', '-n', '-f', filename)
 
-        if 'patches' in filename:
-            return tuple(map(operator.add, diff, process_patch(filename)))
+        if 'patches' in filename: #if it's a tarball containing patches
+            for root, dirs, files in os.walk(".", topdown=False):
+               for name in files:
+                   match = False
+                   for pat in patches_pat: #is the file indeed a patch?
+                       if fnmatch.fnmatch(name, pat):
+                           match = True
+                   if match:
+                       diff = tuple(map(operator.add, diff, process_patch(os.path.join(root, name))))
+
         else:
             tokei_out = io.StringIO()
             sh.tokei('-C', '-o', 'json', tmpdir, _out=tokei_out)
@@ -113,7 +123,7 @@ def process_tarfile(filename):
     if lang:
         for keys, values in local_sources.items():
             print(f"\t{keys}: {values}")
-    return (count, docs, empty)
+    return (count, docs, empty) + diff
 
 
 def process_one_rpm(filename):
@@ -123,15 +133,13 @@ def process_one_rpm(filename):
     patches = []
     tarballs = []
     diff = (0, 0)
-    count = 0
-    docs = 0
-    empty = 0
+    counts = (0, 0, 0)
 
     try:
         current_dir = os.getcwd()
     except FileNotFoundError as error:
         print(filename, error)
-        return (count, docs, empty) + diff
+        return counts + diff
 
     if debug: print(filename)
 
@@ -156,13 +164,15 @@ def process_one_rpm(filename):
                 diff = tuple(map(operator.add, diff, process_patch(temp[NAME])))
                 os.remove(temp[NAME])
 
+
+            counts = counts + diff #concatenating known number of diffs with empty list for the codelines, see also process_one_code_dir
             for tarball in tarballs:
                 if debug: print(tarball)
                 fd = rpm.extractfile(tarball)
                 temp = tempfile.mkstemp()
                 os.write(temp[FD], (fd.read()))
                 os.close(temp[FD])
-                (count, docs, empty) = tuple(map(operator.add, (count, docs, empty), process_tarfile(temp[NAME])))
+                counts = tuple(map(operator.add, counts, process_tarfile(temp[NAME])))
                 os.remove(temp[NAME])
                 os.chdir(current_dir)
     except AssertionError as error:
@@ -184,7 +194,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-D', '--debug', help='Enable debug output', action='store_true')
 parser.add_argument('-l', '--lang', help='Enable detailed language usage output', action='store_true')
 parser.add_argument('-d', '--dir', help='Directory with packages')
-parser.add_argument('-f', '--file', help='Package file')
+parser.add_argument('-f', '--file', help='Package RPM or package source dir')
 args = parser.parse_args()
 if args.debug:
     debug = 1
@@ -207,8 +217,8 @@ savedir = os.getcwd()
 os.chdir(wdir)
 if args.file:
     package_list[filename] = process_one_file(filename)
-    global_lines = package_list[filename][0] + package_list[filename][1] + package_list[filename][2]
-    global_adds = package_list[filename][3]
+    global_lines = package_list[filename][0] + package_list[filename][1] + package_list[filename][2] #code, comments and empty lines all count as a code
+    global_adds = package_list[filename][3] #currently, we use patch additions as a metric
 else:
     for filename in os.listdir(os.getcwd()):
         package_list[filename] = process_one_file(filename)
