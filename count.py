@@ -178,7 +178,7 @@ def process_one_rpm(filename):
     except AssertionError as error:
         if debug: print(error)
 
-    return (count, docs, empty) + diff
+    return counts + diff
 
 
 def process_one_file(filename):
