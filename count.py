@@ -82,6 +82,7 @@ def process_tarfile(filename):
     count, docs, empty = (0, 0, 0)
     diff = (0, 0)
     local_sources = {}
+    totals = 0
 
     with tempfile.TemporaryDirectory() as tmpdir:
         os.chdir(tmpdir)
