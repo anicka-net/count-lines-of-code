@@ -86,7 +86,11 @@ def process_tarfile(filename):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         os.chdir(tmpdir)
-        sh.bsdtar('-x', '-C', tmpdir, '--no-same-permissions', '-o', '--no-xattrs', '-n', '-f', filename)
+        try: #this can fail in case of hardlink pointing to itself
+            sh.bsdtar('-x', '-C', tmpdir, '--no-same-permissions', '-o', '--no-xattrs', '-n', '-f', filename)
+        except sh.ErrorReturnCode_1 as error: #fail silently and skip if not debugging
+            if debug:
+                print(error)
 
         if 'patches' in filename: #if it's a tarball containing patches
             for root, dirs, files in os.walk(".", topdown=False):
@@ -185,9 +189,9 @@ def process_one_rpm(filename):
 def process_one_file(filename):
     os.chdir(wdir)
     if filename.endswith('.src.rpm') or filename.endswith('.spm'):
-        return process_one_rpm(wdir+"/"+filename)
+        return process_one_rpm(os.path.join(wdir, filename))
     elif os.path.isdir(filename):
-        return process_one_code_dir(wdir+"/"+filename)
+        return process_one_code_dir(os.path.join(wdir, filename))
     return (0, 0, 0, 0)
 
 
