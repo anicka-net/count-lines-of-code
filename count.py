@@ -208,7 +208,7 @@ if args.dir:
     if os.path.isabs(args.dir):
         wdir = args.dir
     else:
-        wdir = os.getcwd()+"/"+args.dir
+        wdir = os.path.join(os.getcwd(), args.dir)
 else:
     wdir = os.getcwd()
 
