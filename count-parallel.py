@@ -77,12 +77,12 @@ def process_one_code_dir(filename):
     counts = counts + diff
     for tarball in tarballs:
         if debug: print(tarball)
-        counts = tuple(map(operator.add, counts, process_tarfile(os.path.join(filename, tarball))))
+        counts = tuple(map(operator.add, counts, process_tarfile(os.path.join(filename, tarball), tarball)))
 
     return counts
 
 
-def process_tarfile(filename):
+def process_tarfile(filename, orig_name):
     count, docs, empty = (0, 0, 0)
     diff = (0, 0)
     local_sources = {}
@@ -96,7 +96,7 @@ def process_tarfile(filename):
             if debug:
                 print(error)
 
-        if 'patches' in filename: #if it's a tarball containing patches
+        if 'patches' in orig_name: #if it's a tarball containing patches
             for root, dirs, files in os.walk(".", topdown=False):
                for name in files:
                    match = False
@@ -165,7 +165,7 @@ def process_one_rpm(filename):
                 temp = tempfile.mkstemp()
                 os.write(temp[FD], (fd.read()))
                 os.close(temp[FD])
-                counts = tuple(map(operator.add, counts, process_tarfile(temp[NAME])))
+                counts = tuple(map(operator.add, counts, process_tarfile(temp[NAME], tarball)))
                 os.remove(temp[NAME])
                 os.chdir(current_dir)
     except AssertionError as error:
