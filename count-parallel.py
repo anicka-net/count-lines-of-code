@@ -13,12 +13,16 @@ import logging
 import argparse
 from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
+from multiprocessing import Pool
+
 
 debug = False
-lang = False
 flag = 0
 sources = {}
 wdir = "."
+processes = 4
+glob_tmpdir = ""
+items = {}
 
 if not debug:
     logging.disable(logging.CRITICAL)   # FIXME mute unicode warnings for the time being
@@ -112,22 +116,6 @@ def process_tarfile(filename):
             docs += totals['comments']
             empty += totals['blanks']
 
-        if lang and totals:
-            for language in analysis:
-                if language == 'Total':
-                    continue
-                # update global stats
-                # NOTE(dmllr) should this count comments and blanks?
-                sources.setdefault(language, 0)
-                sources[language] += analysis[language]['code']
-
-                # update package stats
-                # NOTE(dmllr) should this count comments and blanks?
-                local_sources.setdefault(language, 0)
-                local_sources[language] += analysis[language]['code']
-    if lang:
-        for keys, values in local_sources.items():
-            print(f"\t{keys}: {values}")
     return (count, docs, empty) + diff
 
 
@@ -188,21 +176,31 @@ def process_one_rpm(filename):
 
 def process_one_file(filename):
     os.chdir(wdir)
+    out = (0, 0, 0, 0, 0)
     if filename.endswith('.src.rpm') or filename.endswith('.spm'):
-        return process_one_rpm(os.path.join(wdir, filename))
+        out = process_one_rpm(os.path.join(wdir, filename))
     elif os.path.isdir(filename):
-        return process_one_code_dir(os.path.join(wdir, filename))
-    return (0, 0, 0, 0)
+        out = process_one_code_dir(os.path.join(wdir, filename))
+    os.chdir(glob_tmpdir.name)
+    fh = open(filename, "a")
+    fh.write(filename)
+    fh.write(' ')
+    fh.write(' '.join('%s' % x for x in out))
+
+    fh.close()
+    os.chdir(wdir)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-D', '--debug', help='Enable debug output', action='store_true')
-parser.add_argument('-l', '--lang', help='Enable detailed language usage output', action='store_true')
 parser.add_argument('-d', '--dir', help='Directory with packages')
-parser.add_argument('-f', '--file', help='Package RPM or package source dir')
+parser.add_argument('-p', '--proc', help='Number of parallel processes')
 args = parser.parse_args()
 if args.debug:
     debug = 1
+
+if args.proc:
+    processes = int(args.proc)
 
 if args.dir:
     if os.path.isabs(args.dir):
@@ -212,33 +210,19 @@ if args.dir:
 else:
     wdir = os.getcwd()
 
-if args.file:
-    filename = args.file
-
-if args.lang:
-    lang = True
-
 savedir = os.getcwd()
 os.chdir(wdir)
-if args.file:
-    package_list[filename] = process_one_file(filename)
-    global_lines = package_list[filename][0] + package_list[filename][1] + package_list[filename][2] #code, comments and empty lines all count as a code
-    global_adds = package_list[filename][3] #currently, we use patch additions as a metric
-else:
-    for filename in os.listdir(os.getcwd()):
-        package_list[filename] = process_one_file(filename)
-        cl = package_list[filename][0] + package_list[filename][1] + package_list[filename][2]
-        dl = package_list[filename][3]
-        if cl == 0 and dl == 0:
-            continue
-        print(f"{filename}: {cl} {dl}")
-        global_lines += cl
-        global_adds += dl
-        sys.stdout.flush()
-os.chdir(savedir)
 
-print(f"Total lines of code, total lines of patches: {global_lines} {global_adds}")
-if lang:
-    print("Total language analysis:")
-    for keys, values in sources.items():
-        print("\t", keys, ":", values)
+if __name__ == '__main__':
+    glob_tmpdir = tempfile.TemporaryDirectory()
+    pool = Pool(processes)
+    filenames = os.listdir(os.getcwd())
+    pool.map(process_one_file, filenames)
+    pool.close()
+    pool.join()
+    for f in os.listdir(glob_tmpdir.name):
+        fh = open(os.path.join(glob_tmpdir.name, f), "r")
+        print(fh.read())
+        fh.close()
+
+os.chdir(savedir)
